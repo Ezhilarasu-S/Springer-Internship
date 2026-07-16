@@ -1,0 +1,152 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: email-comm-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-airflow_db}
+      POSTGRES_USER: ${POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./ddl.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-airflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - airflow-network
+
+  # Redis for Airflow broker (optional, for distributed execution)
+  redis:
+    image: redis:7-alpine
+    container_name: email-comm-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - airflow-network
+
+  # Airflow Webserver
+  airflow-webserver:
+    image: apache/airflow:2.9.1-python3.11
+    container_name: email-comm-airflow-webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Airflow Core
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow_password}@postgres:5432/${POSTGRES_DB:-airflow_db}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__UNIT_TEST_MODE: "False"
+      AIRFLOW__CORE__CATCHUP_BY_DEFAULT: "False"
+      
+      # Webserver
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+      AIRFLOW__WEBSERVER__AUTHENTICATE: "False"
+      
+      # Database
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow_password}@postgres:5432/${POSTGRES_DB:-airflow_db}
+      
+      # Custom variables for target DB
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY:-Drmhze6EPcv0fN_eIlCS_nHkiZa0hXTXwOIq3G-EsNQ=}
+      
+      # Target PostgreSQL connection
+      TARGET_POSTGRES_HOST: ${TARGET_POSTGRES_HOST:-postgres}
+      TARGET_POSTGRES_PORT: ${TARGET_POSTGRES_PORT:-5432}
+      TARGET_POSTGRES_DB: ${TARGET_POSTGRES_DB:-airflow_db}
+      TARGET_POSTGRES_USER: ${TARGET_POSTGRES_USER:-airflow}
+      TARGET_POSTGRES_PASSWORD: ${TARGET_POSTGRES_PASSWORD:-airflow_password}
+      
+      # CSV Location
+      CSV_FILE_PATH: ${CSV_FILE_PATH:-/opt/airflow/data/dataset.csv}
+      
+      # Target PostgreSQL connection for PostgresHook
+      AIRFLOW_CONN_POSTGRES_DEFAULT: postgresql://${TARGET_POSTGRES_USER:-airflow}:${TARGET_POSTGRES_PASSWORD:-airflow_password}@${TARGET_POSTGRES_HOST:-postgres}:${TARGET_POSTGRES_PORT:-5432}/${TARGET_POSTGRES_DB:-airflow_db}
+      
+      # Logging
+      AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
+    
+    ports:
+      - "8080:8080"
+    
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./logs:/opt/airflow/logs
+      - ./config:/opt/airflow/config
+      - ./schema.yaml:/opt/airflow/dags/schema.yaml
+    
+    command: >
+      bash -c "airflow db init && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@airflow.com --password admin || true && airflow webserver"
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    networks:
+      - airflow-network
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    image: apache/airflow:2.9.1-python3.11
+    container_name: email-comm-airflow-scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow_password}@postgres:5432/${POSTGRES_DB:-airflow_db}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__UNIT_TEST_MODE: "False"
+      AIRFLOW__CORE__CATCHUP_BY_DEFAULT: "False"
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY:-Drmhze6EPcv0fN_eIlCS_nHkiZa0hXTXwOIq3G-EsNQ=}
+      
+      TARGET_POSTGRES_HOST: ${TARGET_POSTGRES_HOST:-postgres}
+      TARGET_POSTGRES_PORT: ${TARGET_POSTGRES_PORT:-5432}
+      TARGET_POSTGRES_DB: ${TARGET_POSTGRES_DB:-airflow_db}
+      TARGET_POSTGRES_USER: ${TARGET_POSTGRES_USER:-airflow}
+      TARGET_POSTGRES_PASSWORD: ${TARGET_POSTGRES_PASSWORD:-airflow_password}
+      CSV_FILE_PATH: ${CSV_FILE_PATH:-/opt/airflow/data/dataset.csv}
+      
+      AIRFLOW_CONN_POSTGRES_DEFAULT: postgresql://${TARGET_POSTGRES_USER:-airflow}:${TARGET_POSTGRES_PASSWORD:-airflow_password}@${TARGET_POSTGRES_HOST:-postgres}:${TARGET_POSTGRES_PORT:-5432}/${TARGET_POSTGRES_DB:-airflow_db}
+      
+      AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
+    
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./logs:/opt/airflow/logs
+      - ./config:/opt/airflow/config
+      - ./schema.yaml:/opt/airflow/dags/schema.yaml
+    
+    command: airflow scheduler
+    
+    networks:
+      - airflow-network
+
+networks:
+  airflow-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

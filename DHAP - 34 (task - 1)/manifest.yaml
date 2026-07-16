@@ -1,0 +1,15 @@
+dataset: email_communications
+description: Email communication dataset from Aetheros customer support platform
+source: SharePoint
+owner: Glynac-AI Data Platform Team
+version: 1.0
+status: validated
+created_date: 2026-07-15
+rows: 2259
+columns: 13
+contact: data-platform@glynac-ai.com
+tags:
+  - communications
+  - customer-support
+  - aetheros
+  - email-tracking

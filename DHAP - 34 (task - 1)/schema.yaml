@@ -1,0 +1,95 @@
+dataset: email_communications
+primary_key: [thread_id, sender, receiver, timestamp]
+columns:
+  - name: id
+    type: serial
+    nullable: false
+    description: Unique auto-incrementing identifier
+
+  - name: subject
+    type: varchar(500)
+    nullable: false
+    description: Email subject line
+
+  - name: sender
+    type: varchar(255)
+    nullable: false
+    description: Email sender address
+
+  - name: receiver
+    type: varchar(255)
+    nullable: false
+    description: Email recipient address
+
+  - name: timestamp
+    type: timestamp with time zone
+    nullable: false
+    description: Email send timestamp in UTC
+
+  - name: message_body
+    type: text
+    nullable: false
+    description: Full email body content
+
+  - name: thread_id
+    type: varchar(100)
+    nullable: false
+    description: Unique identifier for email thread
+
+  - name: email_types
+    type: varchar(50)
+    nullable: false
+    description: Type classification (inquiry, complaint, feedback, etc.)
+
+  - name: email_status
+    type: varchar(50)
+    nullable: false
+    description: Current status - 'ongoing' or 'completed'
+
+  - name: email_criticality
+    type: varchar(20)
+    nullable: false
+    description: Priority level - 'low', 'medium', or 'high'
+
+  - name: product_types
+    type: varchar(255)
+    nullable: false
+    description: Related product(s)
+
+  - name: agent_effectivity
+    type: varchar(50)
+    nullable: true
+    description: Agent effectiveness rating
+
+  - name: agent_efficiency
+    type: varchar(50)
+    nullable: true
+    description: Agent efficiency rating
+
+  - name: customer_satisfaction
+    type: numeric(5, 4)
+    nullable: true
+    description: Customer satisfaction score (0.0 to 1.0)
+
+  - name: loaded_at
+    type: timestamp with time zone
+    nullable: false
+    description: UTC timestamp when record was loaded into warehouse
+    default: "CURRENT_TIMESTAMP"
+
+validation_rules:
+  - column: email_status
+    rule: must_be_in
+    values: ['ongoing', 'completed']
+
+  - column: email_criticality
+    rule: must_be_in
+    values: ['low', 'medium', 'high']
+
+  - column: customer_satisfaction
+    rule: range
+    min: -1.0
+    max: 1.0
+
+  - column: timestamp
+    rule: valid_timestamp
